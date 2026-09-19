@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>PTZ Controller HUD - Herelink Compatible</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+    body { background-color: #0b0f19; color: #00ffcc; font-family: monospace, sans-serif; padding: 10px; }
+    
+    .grid-container { display: flex; flex-direction: column; }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 6px; padding: 12px; margin-bottom: 10px; }
+    .card-title { font-weight: bold; color: #38bdf8; margin-bottom: 8px; font-size: 14px; text-transform: uppercase; }
+    
+    .input-group { display: flex; margin-bottom: 8px; }
+    .input-group label { width: 60px; font-size: 12px; line-height: 28px; }
+    .input-group input { background: #000; border: 1px solid #374151; color: #00ffcc; padding: 4px 8px; flex: 1; font-family: monospace; }
+    
+    .btn-grid { display: flex; flex-wrap: wrap; }
+    .btn { background: #1f2937; border: 1px solid #374151; color: #e5e7eb; padding: 8px 12px; margin: 3px; border-radius: 4px; cursor: pointer; font-size: 12px; flex: 1; min-width: 70px; text-align: center; }
+    .btn:active { background: #00ffcc; color: #000; }
+    .btn-danger { border-color: #ef4444; color: #f87171; }
+    .btn-danger:active { background: #ef4444; color: #fff; }
+    
+    /* D-Pad Layout */
+    .dpad-wrap { display: flex; justify-content: center; align-items: center; margin: 10px 0; }
+    .dpad { display: grid; grid-template-columns: 60px 60px 60px; grid-template-rows: 50px 50px 50px; }
+    .dpad .btn { margin: 2px; }
+    
+    /* Terminal Console */
+    #console-log { background: #000; border: 1px solid #1f2937; color: #10b981; font-size: 11px; height: 140px; overflow-y: scroll; padding: 8px; white-space: pre-wrap; word-break: break-all; }
+    .log-err { color: #f87171; }
+    .log-info { color: #38bdf8; }
+  </style>
+</head>
+<body>
+
+  <!-- TARGET CONFIG -->
+  <div class="card">
+    <div class="card-title">Target Connection</div>
+    <div class="input-group">
+      <label>IP:</label>
+      <input type="text" id="target-ip" value="192.168.144.50">
+    </div>
+    <div class="input-group">
+      <label>Port:</label>
+      <input type="text" id="target-port" value="80">
+    </div>
+  </div>
+
+  <!-- PAN TILT DPAD -->
+  <div class="card">
+    <div class="card-title">Gimbal Pan / Tilt Controls</div>
+    <div class="dpad-wrap">
+      <div class="dpad">
+        <div></div>
+        <button class="btn" onclick="sendApi('/api/drive/tilt/up')">▲ UP</button>
+        <div></div>
+        <button class="btn" onclick="sendApi('/api/drive/pan/left')">◄ LEFT</button>
+        <button class="btn btn-danger" onclick="stopAll()">STOP</button>
+        <button class="btn" onclick="sendApi('/api/drive/pan/right')">RIGHT ►</button>
+        <div></div>
+        <button class="btn" onclick="sendApi('/api/drive/tilt/down')">▼ DOWN</button>
+        <div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ZOOM PRESETS -->
+  <div class="card">
+    <div class="card-title">Optical / Digital Zoom</div>
+    <div class="btn-grid">
+      <button class="btn" onclick="sendApi('/api/camera/zoom/1x')">1x</button>
+      <button class="btn" onclick="sendApi('/api/camera/zoom/2x')">2x</button>
+      <button class="btn" onclick="sendApi('/api/camera/zoom/4x')">4x</button>
+      <button class="btn" onclick="sendApi('/api/camera/zoom/10x')">10x</button>
+      <button class="btn" onclick="sendApi('/api/camera/zoom/20x')">20x</button>
+    </div>
+  </div>
+
+  <!-- FEED & LRF -->
+  <div class="card">
+    <div class="card-title">Feed Switch & LRF</div>
+    <div class="btn-grid">
+      <button class="btn" onclick="sendApi('/api/camera/switch/RGB')">EO (RGB)</button>
+      <button class="btn" onclick="sendApi('/api/camera/switch/IR')">IR (Thermal)</button>
+      <button class="btn" onclick="sendApi('/api/lrf/fire/once')">LRF Once</button>
+      <button class="btn" onclick="sendApi('/api/lrf/fire/continuous')">LRF Cont</button>
+      <button class="btn btn-danger" onclick="sendApi('/api/lrf/fire/stop')">LRF Stop</button>
+    </div>
+  </div>
+
+  <!-- TERMINAL -->
+  <div class="card">
+    <div class="card-title">API Response Log</div>
+    <div id="console-log">[SYSTEM READY - WEBVIEW 52 COMPATIBLE MODE]</div>
+  </div>
+
+  <script>
+    function getBaseUrl() {
+      var ip = document.getElementById('target-ip').value;
+      var port = document.getElementById('target-port').value;
+      return 'http://' + ip + ':' + port;
+    }
+
+    function logToUi(msg, isErr) {
+      var consoleEl = document.getElementById('console-log');
+      var time = new Date().toTimeString().split(' ')[0];
+      var line = document.createElement('div');
+      if(isErr) line.className = 'log-err';
+      line.textContent = '[' + time + '] ' + msg;
+      consoleEl.appendChild(line);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+
+    function sendApi(endpoint) {
+      var fullUrl = getBaseUrl() + endpoint;
+      
+      // Native Console Logging
+      console.log('[API REQUEST]', fullUrl);
+      logToUi('Sending: ' + endpoint, false);
+
+      // Using Standard Promises (ES5 compatible for Chrome 52)
+      fetch(fullUrl, {
+        method: 'GET',
+        mode: 'cors',
+        headers: { 'Accept': 'application/json, text/plain, */*' }
+      })
+      .then(function(response) {
+        console.log('[API RESPONSE STATUS]', response.status, fullUrl);
+        logToUi('SUCCESS [' + response.status + ']: ' + endpoint, false);
+        return response.text();
+      })
+      .then(function(data) {
+        if(data) console.log('[API BODY]', data);
+      })
+      .catch(function(error) {
+        console.error('[API ERROR]', fullUrl, error);
+        logToUi('FAILED: ' + endpoint + ' (' + error.message + ')', true);
+      });
+    }
+
+    function stopAll() {
+      sendApi('/api/drive/pan/stop');
+      sendApi('/api/drive/tilt/stop');
+    }
+  </script>
+</body>
+</html>
